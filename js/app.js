@@ -2602,6 +2602,13 @@ function envoyerMailKulanz(d, statut, commentaire, commerce) {
     if(commerce.moe_de) corps+='  MO Ext         : '+commerce.moe_de+' %\n';
     if(commerce.pe_de)  corps+='  Pièces Ext     : '+commerce.pe_de+' %\n';
   }
+  // Légende KULANZ — uniquement sur statut "Traitée" (participation accordée)
+  // Mise en évidence maximale en texte brut (pas de couleur/gras possible via mailto)
+  if ((d.type||'Kulanz') !== 'CCR' && statut === 'Traitée') {
+    corps+='\n'+sep+'\n';
+    corps+='⚠️  *** KULANZ APPLICABLE SOUS RÉSERVE QUE LES ENTRETIENS SOIENT À JOUR ***  ⚠️\n';
+    corps+=sep+'\n';
+  }
   corps+='\n'+sep+'\n';
   corps+='Team Garantie GEA – VW  |  Alsace  |  teamgarantie@geauto.fr\n';
   corps+=sep+'\n';
