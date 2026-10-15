@@ -1219,8 +1219,6 @@ function formSnapshot() {
   b.num_tpi = gv('num_tpi') || '';
   b.iq_num = gv('iq_num') || '';
   b.elsa_dispo = gr('elsa_dispo') || '';
-  // Messages d'alerte AFFICHÉS dans la demande Kulanz : repris en bas du mail automatique
-  b.k_alertes = (b.type === 'CCR') ? [] : collectKulanzAlertes();
   return b;
 }
 
@@ -1664,6 +1662,15 @@ function envoyerFormulaire() {
   btn.disabled = true; btn.textContent = 'Envoi en cours\u2026';
   var msg = '\u2550'.repeat(40)+'\nDEMANDE '+d.type.toUpperCase()+' \u2014 '+d.site+'\n'+'\u2550'.repeat(40)+'\n\n';
   d.fields.filter(function(f){ return f.v; }).forEach(function(f){ msg += f.l+' : '+f.v+'\n'; });
+  // Messages d'alerte AFFICHÉS dans la demande Kulanz : repris sous le contenu du mail, avant la signature.
+  // (uniquement à l'envoi de la demande ; rien n'est ajouté au mail de changement de statut)
+  if (d.type !== 'CCR') {
+    var _alk = collectKulanzAlertes();
+    if (_alk.length) {
+      msg += '\n'+'\u2500'.repeat(40)+'\n\u26A0 POINTS D\'ATTENTION DE LA DEMANDE KULANZ\n';
+      _alk.forEach(function(a){ msg += '\u2022 '+a+'\n'; });
+    }
+  }
   msg += '\n'+'\u2500'.repeat(40)+'\nTeam Garantie GEA \u2013 VW';
   // 1) Construire l'enregistrement (sauvegarde prioritaire, independante de l'e-mail)
   var newD2 = {
@@ -1726,7 +1733,6 @@ function envoyerFormulaire() {
 
 function nouvelleDemande() {
   ge('success-overlay').classList.remove('open');
-  if (typeof resetEnquete === 'function') resetEnquete();
   var _cdb = ge('ccr-docs-block'); if (_cdb) _cdb.style.display = 'none';
   G.editingId = null;
   G.editOnly = false;
@@ -2621,27 +2627,9 @@ function envoyerMailKulanz(d, statut, commentaire, commerce) {
     corps+='⚠️  *** KULANZ APPLICABLE SOUS RÉSERVE QUE LES ENTRETIENS SOIENT À JOUR ***  ⚠️\n';
     corps+=sep+'\n';
   }
-  var piedMail = '\n'+sep+'\n'+'Team Garantie GEA – VW  |  Alsace  |  teamgarantie@geauto.fr\n'+sep+'\n';
-  var MAX_CORPS = 1800;
-
-  // Messages d'alerte affichés dans la demande Kulanz → repris SOUS le mail (avant le pied de page).
-  // On réserve la place du pied de page ; si tout ne tient pas, les derniers messages sont raccourcis/omis.
-  var alertes = Array.isArray(d.k_alertes) ? d.k_alertes.filter(Boolean) : [];
-  if ((d.type||'Kulanz') !== 'CCR' && alertes.length) {
-    var entete = '\n⚠️  POINTS D\'ATTENTION DE LA DEMANDE KULANZ\n';
-    var place = MAX_CORPS - corps.length - piedMail.length - entete.length;
-    var lignes = [];
-    alertes.forEach(function(a) {
-      var l = '• ' + a + '\n';
-      if (l.length <= place) { lignes.push(l); place -= l.length; }
-      else if (place > 90) { // dernier message raccourci proprement (coupure en fin de mot)
-        lignes.push(l.substring(0, place - 2).replace(/\s+\S*$/, '') + '…\n');
-        place = 0;
-      }
-    });
-    if (lignes.length) corps += entete + lignes.join('');
-  }
-  corps += piedMail;
+  corps+='\n'+sep+'\n';
+  corps+='Team Garantie GEA – VW  |  Alsace  |  teamgarantie@geauto.fr\n';
+  corps+=sep+'\n';
 
   // Ouvrir Outlook avec l'email pré-rempli
   var dest = d.email_usager || d.email || '';
@@ -3284,84 +3272,6 @@ window.addEventListener('beforeunload', function(e) {
   e.returnValue = ''; // message standardisé par le navigateur
   return '';
 });
-
-// ═══════════════════════════════════════════════════════════
-// ENQUÊTE DE SATISFACTION (écran de confirmation)
-// ═══════════════════════════════════════════════════════════
-var G_survey = { facilite: 0, rapidite: 0, global: 0 };
-
-// Sélection des étoiles (délégation)
-document.addEventListener('click', function(e) {
-  var star = e.target.closest ? e.target.closest('.stars span') : null;
-  if (!star) return;
-  var wrap = star.parentNode;
-  var q = wrap.getAttribute('data-q');
-  var v = parseInt(star.getAttribute('data-v'), 10);
-  if (!q || !v) return;
-  G_survey[q] = v;
-  // colorer les étoiles jusqu'à v
-  [].forEach.call(wrap.querySelectorAll('span'), function(s) {
-    var sv = parseInt(s.getAttribute('data-v'), 10);
-    s.textContent = sv <= v ? '★' : '☆';
-    s.classList.toggle('on', sv <= v);
-  });
-});
-
-function envoyerEnquete() {
-  // Récupérer les sujets cochés
-  var topics = [];
-  [].forEach.call(document.querySelectorAll('#survey-topics input:checked'), function(c) { topics.push(c.value); });
-
-  // Au moins une note ou un sujet
-  if (!G_survey.facilite && !G_survey.rapidite && !G_survey.global && !topics.length) {
-    toast('Merci de donner au moins une note.');
-    return;
-  }
-
-  var rec = {
-    id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-    date: new Date().toLocaleDateString('fr-FR'),
-    heure: new Date().toLocaleTimeString('fr-FR'),
-    site: (ge('f-site') ? ge('f-site').value : '') || '',
-    role: G.role || '',
-    facilite: G_survey.facilite || null,
-    rapidite: G_survey.rapidite || null,
-    global: G_survey.global || null,
-    ameliorations: topics
-  };
-
-  var key = 's' + String(rec.id).replace(/[^a-zA-Z0-9]/g, '');
-  var save;
-  try {
-    if (typeof db !== 'undefined' && db) {
-      save = db.ref('enquetes').child(key).set(rec);
-    } else {
-      save = Promise.resolve();
-    }
-  } catch (e) { save = Promise.resolve(); }
-
-  Promise.resolve(save).then(function() {
-    var block = ge('survey-block');
-    if (block) {
-      // masquer le formulaire, afficher le remerciement
-      [].forEach.call(block.querySelectorAll('.survey-q, .btn-survey'), function(el) { el.style.display = 'none'; });
-      var t = ge('survey-thanks'); if (t) t.style.display = 'block';
-    }
-  }).catch(function(err) {
-    console.warn('Enquête:', err);
-    toast('❌ Impossible d\'enregistrer l\'avis.');
-  });
-}
-
-// Réinitialiser l'enquête pour la prochaine demande
-function resetEnquete() {
-  G_survey = { facilite: 0, rapidite: 0, global: 0 };
-  [].forEach.call(document.querySelectorAll('#survey-block .stars span'), function(s) { s.textContent = '☆'; s.classList.remove('on'); });
-  [].forEach.call(document.querySelectorAll('#survey-topics input:checked'), function(c) { c.checked = false; });
-  var block = ge('survey-block');
-  if (block) [].forEach.call(block.querySelectorAll('.survey-q, .btn-survey'), function(el) { el.style.display = ''; });
-  var t = ge('survey-thanks'); if (t) t.style.display = 'none';
-}
 
 // ═══════════════════════════════════════════════════════════
 // Notification "Documentation requise" côté usager
