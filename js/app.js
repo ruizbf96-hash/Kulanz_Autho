@@ -1219,6 +1219,8 @@ function formSnapshot() {
   b.num_tpi = gv('num_tpi') || '';
   b.iq_num = gv('iq_num') || '';
   b.elsa_dispo = gr('elsa_dispo') || '';
+  // Messages d'alerte AFFICHÉS dans la demande Kulanz : repris en bas du mail automatique
+  b.k_alertes = (b.type === 'CCR') ? [] : collectKulanzAlertes();
   return b;
 }
 
@@ -1344,6 +1346,16 @@ function fillFormFromRecord(b) {
       }
     });
     if (b.num_tpi) { sv('num_tpi', b.num_tpi); toggleTpiField(true); }
+    // Bloc « vendu au client » : masqué par défaut, ouvert quand la question précédente (dernier
+    // entretien…) = Non. On le rouvre, puis on restaure la réponse et l'alerte « Attention » si Non.
+    var _iv = brandQs.findIndex(function(q){ return q.name === 'vendu_client'; });
+    if (_iv > 0 && b['k_' + brandQs[_iv - 1].name] && typeof toggleVenduClient === 'function') {
+      toggleVenduClient(b['k_' + brandQs[_iv - 1].name]);
+    }
+    if (b.k_vendu_client) {
+      var vr = document.querySelector('[name="vendu_client"][value="' + b.k_vendu_client + '"]');
+      if (vr) { vr.checked = true; if (b.k_vendu_client === 'NON') showVenduAlert(); }
+    }
   }
   // CCR : IQ + plan ELSA
   if (b.iq_num) { sv('iq_num', b.iq_num); var iqEl=ge('iq-num'); if(iqEl) onIqInput(iqEl); }
@@ -2034,13 +2046,13 @@ function renderHisto() {
     var bc   = _si.badge;
     var ic   = _si.icon;
     var pec  = '—';
-    if (d.statut==='Traitée' && d.commerce) {
+    if ((d.statut==='Traitée' || d.statut==='Validée CCR') && d.commerce) {
       var c=d.commerce, pts=[];
-      if(c.mo_de)  pts.push('<span>MO: '+esc(c.mo_de)+'%</span>');
-      if(c.pi_de)  pts.push('<span>Pièces: '+esc(c.pi_de)+'%</span>');
-      if(c.moe_de) pts.push('<span>MO ext.: '+esc(c.moe_de)+'%</span>');
-      if(c.pe_de)  pts.push('<span>Pièces ext.: '+esc(c.pe_de)+'%</span>');
-      if(pts.length) pec='<div style="font-size:11px;line-height:1.7">'+pts.join('')+'</div>';
+      if(c.mo_de)  pts.push('<div>MO: '+esc(c.mo_de)+'%</div>');
+      if(c.pi_de)  pts.push('<div>Pièces: '+esc(c.pi_de)+'%</div>');
+      if(c.moe_de) pts.push('<div>MO ext.: '+esc(c.moe_de)+'%</div>');
+      if(c.pe_de)  pts.push('<div>Pièces ext.: '+esc(c.pe_de)+'%</div>');
+      if(pts.length) pec='<div style="font-size:11px;line-height:1.5">'+pts.join('')+'</div>';
     }
     var _traitee = statutEstTraite(d.statut);
     var _btnLabel = _traitee ? '✓ Validée'
@@ -2609,9 +2621,27 @@ function envoyerMailKulanz(d, statut, commentaire, commerce) {
     corps+='⚠️  *** KULANZ APPLICABLE SOUS RÉSERVE QUE LES ENTRETIENS SOIENT À JOUR ***  ⚠️\n';
     corps+=sep+'\n';
   }
-  corps+='\n'+sep+'\n';
-  corps+='Team Garantie GEA – VW  |  Alsace  |  teamgarantie@geauto.fr\n';
-  corps+=sep+'\n';
+  var piedMail = '\n'+sep+'\n'+'Team Garantie GEA – VW  |  Alsace  |  teamgarantie@geauto.fr\n'+sep+'\n';
+  var MAX_CORPS = 1800;
+
+  // Messages d'alerte affichés dans la demande Kulanz → repris SOUS le mail (avant le pied de page).
+  // On réserve la place du pied de page ; si tout ne tient pas, les derniers messages sont raccourcis/omis.
+  var alertes = Array.isArray(d.k_alertes) ? d.k_alertes.filter(Boolean) : [];
+  if ((d.type||'Kulanz') !== 'CCR' && alertes.length) {
+    var entete = '\n⚠️  POINTS D\'ATTENTION DE LA DEMANDE KULANZ\n';
+    var place = MAX_CORPS - corps.length - piedMail.length - entete.length;
+    var lignes = [];
+    alertes.forEach(function(a) {
+      var l = '• ' + a + '\n';
+      if (l.length <= place) { lignes.push(l); place -= l.length; }
+      else if (place > 90) { // dernier message raccourci proprement (coupure en fin de mot)
+        lignes.push(l.substring(0, place - 2).replace(/\s+\S*$/, '') + '…\n');
+        place = 0;
+      }
+    });
+    if (lignes.length) corps += entete + lignes.join('');
+  }
+  corps += piedMail;
 
   // Ouvrir Outlook avec l'email pré-rempli
   var dest = d.email_usager || d.email || '';
@@ -3039,6 +3069,39 @@ function isEntretienCategory() {
 function updateEntretienBanner() {
   var banner = ge('entretien-banner');
   if (banner) banner.style.display = isEntretienCategory() ? 'block' : 'none';
+}
+
+// Récupère, en texte brut, les messages d'alerte actuellement AFFICHÉS dans le formulaire Kulanz
+// (alertes sous chaque question, alerte « Attention », motifs + règle de la marque).
+// Seuls les éléments visibles sont repris ; les doublons sont supprimés.
+function collectKulanzAlertes() {
+  var out = [], seen = {};
+  var vis   = function(el) { return !!el && el.getClientRects().length > 0; };
+  var clean = function(t)  { return String(t || '').replace(/\s+/g, ' ').trim(); };
+  var add   = function(t)  { t = clean(t); if (t && !seen[t]) { seen[t] = 1; out.push(t); } };
+
+  // 1) Alertes affichées sous chaque question (titre + texte)
+  [].forEach.call(document.querySelectorAll('.knok-item'), function(el) {
+    if (!vis(el)) return;
+    var title = el.querySelector(':scope > div > div'), body = el.querySelector(':scope > div > p');
+    add([title ? clean(title.textContent) : '', body ? clean(body.textContent) : ''].filter(Boolean).join(' — '));
+  });
+
+  // 2) Alerte « Attention » (dernier entretien vendu et réalisé en même temps que la réparation)
+  var va = ge('vendu-alert');
+  if (vis(va)) add(va.textContent);
+
+  // 3) Bloc de synthèse : motifs de non-éligibilité + règle de la marque
+  var z = ge('kulanz-nok-alert');
+  if (z && z.classList.contains('show') && vis(z)) {
+    var motifs = [].map.call(z.querySelectorAll('.knok-body > div:not(.knok-brand) > p'), function(p) {
+      return clean(p.textContent).replace(/^[^\wÀ-ÿ]+/, '');
+    }).filter(Boolean);
+    if (motifs.length) add('Motif(s) de non-éligibilité : ' + motifs.join(' ; '));
+    var bt = z.querySelector('.knok-brand-title'), bx = z.querySelector('.knok-brand-txt');
+    if (bt && bx) add(clean(bt.textContent) + ' — ' + clean(bx.textContent));
+  }
+  return out;
 }
 
 function checkKulanzNok() {
