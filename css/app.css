@@ -465,8 +465,8 @@ tbody tr:hover td{background:var(--bg2)}
 /* ════════════════════════════════════════════════
    MODALES & OVERLAYS
    ════════════════════════════════════════════════ */
-#pwd-modal,#vider-modal,#success-overlay{position:fixed;inset:0;background:rgba(16,41,62,.5);z-index:800;display:none;align-items:center;justify-content:center;padding:20px}
-#pwd-modal.open,#vider-modal.open,#success-overlay.open,#success-overlay.show{display:flex}
+#pwd-modal,#vider-modal,#debloc-modal,#success-overlay{position:fixed;inset:0;background:rgba(16,41,62,.5);z-index:800;display:none;align-items:center;justify-content:center;padding:20px}
+#pwd-modal.open,#vider-modal.open,#debloc-modal.open,#success-overlay.open,#success-overlay.show{display:flex}
 .pm-box,.vm-box{background:#fff;border-radius:16px;padding:30px;width:100%;max-width:400px;box-shadow:var(--shadow-lg)}
 .pm-box h3{font-size:18px;font-weight:700;margin-bottom:6px;color:var(--ink)}
 .pm-box p{font-size:13px;color:var(--ink-soft);margin-bottom:18px}
@@ -559,3 +559,39 @@ select.row-statut:hover{filter:brightness(.97)}
 /* Checklist documents CCR */
 .ccr-doc{font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 8px;border:1px solid #B8CCE8;border-radius:6px;background:#fff}
 .ccr-doc input{margin:0}
+
+/* ═══════════════════════════════════════════════════════════
+   Tableau Demandes / Historique : tout tient à l'écran,
+   SANS barre de défilement horizontale (écrans ≥ 1100 px)
+   ═══════════════════════════════════════════════════════════ */
+.histo-wrap{max-width:1500px}
+.tbl-scroll{overflow-x:visible}
+.tbl-scroll table{table-layout:fixed;width:100%;min-width:0}
+.tbl-scroll th{padding:10px 6px;white-space:normal;line-height:1.25;font-size:9.5px;letter-spacing:.3px}
+.tbl-scroll td{padding:9px 6px;font-size:12px;overflow-wrap:anywhere;word-break:break-word}
+
+/* Largeurs de colonnes (total = 100 %) */
+.tbl-scroll th:nth-child(1){width:7%}    /* Date */
+.tbl-scroll th:nth-child(2){width:8%}    /* Site */
+.tbl-scroll th:nth-child(3){width:5%}    /* Type */
+.tbl-scroll th:nth-child(4){width:6%}    /* N° OR */
+.tbl-scroll th:nth-child(5){width:12%}   /* Châssis */
+.tbl-scroll th:nth-child(6){width:10%}   /* Code dom. */
+.tbl-scroll th:nth-child(7){width:18%}   /* Statut */
+.tbl-scroll th:nth-child(8){width:8%}    /* Responsable */
+.tbl-scroll th:nth-child(9){width:8%}    /* Prise en charge */
+.tbl-scroll th:nth-child(10){width:8%}   /* Commentaire */
+.tbl-scroll th:nth-child(11){width:10%}  /* Action */
+
+/* Menus déroulants et badges : prennent la largeur de leur colonne */
+.tbl-scroll select.row-statut,
+.tbl-scroll select.row-resp{width:100%;max-width:none;box-sizing:border-box;text-overflow:ellipsis}
+.tbl-scroll .badge{white-space:normal;line-height:1.25}
+.tbl-scroll .btn-val{white-space:nowrap}
+
+/* Petits écrans : retour au défilement horizontal (impossible de tout afficher) */
+@media (max-width:1100px){
+  .tbl-scroll{overflow-x:auto}
+  .tbl-scroll table{table-layout:auto;min-width:1000px}
+  .tbl-scroll th{white-space:nowrap}
+}
