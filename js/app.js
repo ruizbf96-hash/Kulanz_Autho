@@ -1423,7 +1423,7 @@ function collectData() {
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // ENVOYER
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-function envoyerFormulaire() {
+function envoyerFormulaire(confirme) {
   var site  = ge('f-site') ? ge('f-site').value : '';
   var type  = (ge('f-type') && ge('f-type').value) ? ge('f-type').value : 'Kulanz';
   var isCCR = (type === 'CCR');
@@ -1510,10 +1510,9 @@ function envoyerFormulaire() {
     return;
   }
 
-  var _ct = 'Confirmer l\'envoi ?'
-    + '\nSite : '+site+'  |  N° OR : '+gv('or_number')+'  |  Châssis : '+gv('chassis');
-  if (isCCR) _ct += '\n\n⚠ Après OK : le PDF est généré et les instructions s\'affichent.';
-  if (!confirm(_ct)) return;
+  // Résumé de la demande AVANT l'envoi (fenêtre dans la page) : rien n'est envoyé tant que
+  // l'utilisateur n'a pas cliqué sur « Confirmer l'envoi » (qui relance cette fonction avec confirme = true).
+  if (confirme !== true) { ouvrirRecapEnvoi(); return; }
 
   var d = collectData();
 
@@ -1642,6 +1641,7 @@ function envoyerFormulaire() {
     // Bloc documents CCR : afficher + mémoriser la demande pour le mailto
     G._lastCCR = { site: newD.site, or: newD.or, chassis: newD.chassis, email: newD.email_usager };
     var _cdb = ge('ccr-docs-block'); if (_cdb) _cdb.style.display = 'block';
+    var _kcbC = ge('kulanz-confirm-block'); if (_kcbC) _kcbC.style.display = 'none';
     setTimeout(function(){
       btn.disabled = false;
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg> Envoyer la demande';
@@ -1713,6 +1713,8 @@ function envoyerFormulaire() {
       '<strong>N\u00b0 OR\u00a0:</strong> '+esc(rec.or)+'<br>'+
       '<strong>Ch\u00e2ssis\u00a0:</strong> '+esc(rec.chassis);
     var _cdbK = ge('ccr-docs-block'); if (_cdbK) _cdbK.style.display = 'none';
+    G._lastKulanz = { site: rec.site, or: rec.or, chassis: rec.chassis, kvps: rec.kvps, email: email, fields: d.fields, motifs: _mot || [] };
+    var _kcb = ge('kulanz-confirm-block'); if (_kcb) _kcb.style.display = 'block';
     G._dirty = false; ge('success-overlay').classList.add('open');
   })
   .catch(function(err){ console.error(err); toast('\u274c Erreur d\'enregistrement \u2013 reessayez.'); })
@@ -1722,9 +1724,93 @@ function envoyerFormulaire() {
   });
 }
 
+// ═══════════════════════════════════════════════════════════
+// RÉSUMÉ AVANT ENVOI + E-MAIL DE CONFIRMATION
+// ═══════════════════════════════════════════════════════════
+
+// Fenêtre « Résumé de la demande » : remplace le pop-up du navigateur.
+// Boutons : « Modifier » (retour au formulaire) et « Confirmer l'envoi ».
+function ouvrirRecapEnvoi() {
+  var m = ge('recap-modal'), body = ge('recap-body');
+  var isCCR = ((ge('f-type') && ge('f-type').value) || 'Kulanz') === 'CCR';
+  if (!m || !body) {
+    // Repli (fichiers partiellement déployés) : confirmation du navigateur, comme avant
+    var site = ge('f-site') ? ge('f-site').value : '';
+    if (confirm('Confirmer l\'envoi ?\nSite : ' + site + '  |  N° OR : ' + gv('or_number') + '  |  Châssis : ' + gv('chassis'))) envoyerFormulaire(true);
+    return;
+  }
+  var d = collectData();
+  var h = '<div class="rc-head"><strong>' + esc(d.type) + '</strong> \u2014 ' + esc(d.site) + '</div>';
+  d.fields.filter(function(f){ return f.v; }).forEach(function(f){
+    h += '<div class="rc-row"><span class="rc-l">' + esc(f.l) + '</span><span class="rc-v">' + esc(f.v) + '</span></div>';
+  });
+  body.innerHTML = h;
+  body.scrollTop = 0;
+
+  // Points d'attention (Kulanz) : les motifs qui seront indiqués dans le mail envoyé à la TeamGarantie
+  var w = ge('recap-warn'), mot = isCCR ? [] : collectKulanzMotifs();
+  if (w) {
+    if (mot.length) {
+      w.innerHTML = '<strong>\u26A0 Points d\'attention de la demande</strong><ul>'
+        + mot.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('')
+        + '</ul><div class="rc-note">Ils seront indiqu\u00e9s dans le mail envoy\u00e9 \u00e0 la TeamGarantie.</div>';
+      w.style.display = 'block';
+    } else { w.innerHTML = ''; w.style.display = 'none'; }
+  }
+  var cn = ge('recap-ccr-note'); if (cn) cn.style.display = isCCR ? 'block' : 'none';
+  var ok = ge('recap-ok-btn'); if (ok) ok.disabled = false;
+  m.classList.add('open');
+}
+
+function fermerRecap() {
+  var m = ge('recap-modal'); if (m) m.classList.remove('open');
+}
+
+// « Confirmer l'envoi » : ferme le résumé puis envoie réellement la demande
+function confirmerEnvoi() {
+  var ok = ge('recap-ok-btn'); if (ok) ok.disabled = true;   // anti double-clic
+  fermerRecap();
+  envoyerFormulaire(true);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { var m = ge('recap-modal'); if (m && m.classList.contains('open')) fermerRecap(); }
+});
+
+// E-mail de confirmation d'envoi (Kulanz) : adressé à l'usager, TeamGarantie en copie.
+// Même objet que le futur mail de réponse (« Demande Kulanz_VIN_KVPS ») → même conversation.
+function envoyerConfirmationKulanz() {
+  var k = G._lastKulanz;
+  if (!k) { toast('Aucune demande \u00e0 confirmer.'); return; }
+  var sep = '\u2500'.repeat(30);
+  var kvps = k.kvps || KVPS_MAP[k.site] || '';
+  var sujet = 'Demande Kulanz_' + (k.chassis || '') + (kvps ? '_' + kvps : '');
+  var KEYS = ['N° OR', 'Date OR', 'Châssis', 'KVPS', 'Kilométrage', 'Désignation pièce', 'Code dommage', 'Code avarie', 'Nom du demandeur'];
+  var all = (k.fields || []).filter(function(f){ return f.v; });
+  var rows = all.filter(function(f){ return KEYS.indexOf(f.l) !== -1; });
+  if (!rows.length) rows = all.slice(0, 8);
+
+  var corps = '\uD83D\uDD27  DEMANDE KULANZ \u2014 ' + (k.site || '').toUpperCase() + '\n'
+            + '\uD83D\uDCE8  CONFIRMATION D\'ENVOI DE LA DEMANDE\n' + sep + '\n';
+  rows.forEach(function(f){ corps += '  ' + (f.l + '                  ').slice(0, 18) + ': ' + f.v + '\n'; });
+  if (k.motifs && k.motifs.length) {
+    corps += '\n\u26A0\uFE0F  POINTS D\'ATTENTION\n';
+    k.motifs.forEach(function(x){ corps += '\u2022 ' + x + '\n'; });
+  }
+  corps += '\nVotre demande a \u00e9t\u00e9 transmise \u00e0 la TeamGarantie.\nLa r\u00e9ponse vous sera envoy\u00e9e par e-mail.\n'
+         + sep + '\nTeam Garantie GEA \u2013 VW  |  Alsace  |  teamgarantie@geauto.fr\n';
+
+  var dest = k.email || 'teamgarantie@geauto.fr';
+  var cc = (dest.toLowerCase() !== 'teamgarantie@geauto.fr') ? '&cc=' + encodeURIComponent('teamgarantie@geauto.fr') : '';
+  ouvrirMailto('mailto:' + dest + '?subject=' + encodeURIComponent(sujet) + cc + '&body=' + encodeURIComponent(corps.substring(0, 1800)));
+  toast('\uD83D\uDCE7 E-mail de confirmation pr\u00e9par\u00e9 \u2014 v\u00e9rifiez avant d\'envoyer');
+}
+
 function nouvelleDemande() {
   ge('success-overlay').classList.remove('open');
   var _cdb = ge('ccr-docs-block'); if (_cdb) _cdb.style.display = 'none';
+  var _kcbN = ge('kulanz-confirm-block'); if (_kcbN) _kcbN.style.display = 'none';
+  G._lastKulanz = null;
   G.editingId = null;
   G.editOnly = false;
   G._dirty = false;
@@ -3072,6 +3158,10 @@ function checkKulanzNok() {
   var zone = ge('kulanz-nok-alert');
   if (!zone) return;
 
+  // Effacer TOUTES les alertes affichées sous les questions, à chaque appel et AVANT toute sortie anticipée :
+  // sinon, quand on repasse la dernière réponse problématique à « OK », elles resteraient à l'écran.
+  [].forEach.call(document.querySelectorAll('.knok-item'), function(el){ el.style.display='none'; el.innerHTML=''; });
+
   // Pop-up immédiat si OPTEVEN passe à OUI (une seule fois par changement)
   var optevenVal = gr('opteven');
   if (optevenVal === 'OUI' && G._lastOpteven !== 'OUI') {
@@ -3135,7 +3225,6 @@ function checkKulanzNok() {
   }
 
   // ── Alertes PAR ITEM : chaque critère écrit son message SOUS sa question ──
-  [].forEach.call(document.querySelectorAll('.knok-item'), function(el){ el.style.display='none'; el.innerHTML=''; });
 
   var setItem = function(name, borderColor, titleColor, icon, title, body) {
     var el = ge('knok-item-' + name);
