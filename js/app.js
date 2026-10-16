@@ -1344,16 +1344,6 @@ function fillFormFromRecord(b) {
       }
     });
     if (b.num_tpi) { sv('num_tpi', b.num_tpi); toggleTpiField(true); }
-    // Bloc « vendu au client » : masqué par défaut, ouvert quand la question précédente (dernier
-    // entretien…) = Non. On le rouvre, puis on restaure la réponse et l'alerte « Attention » si Non.
-    var _iv = brandQs.findIndex(function(q){ return q.name === 'vendu_client'; });
-    if (_iv > 0 && b['k_' + brandQs[_iv - 1].name] && typeof toggleVenduClient === 'function') {
-      toggleVenduClient(b['k_' + brandQs[_iv - 1].name]);
-    }
-    if (b.k_vendu_client) {
-      var vr = document.querySelector('[name="vendu_client"][value="' + b.k_vendu_client + '"]');
-      if (vr) { vr.checked = true; if (b.k_vendu_client === 'NON') showVenduAlert(); }
-    }
   }
   // CCR : IQ + plan ELSA
   if (b.iq_num) { sv('iq_num', b.iq_num); var iqEl=ge('iq-num'); if(iqEl) onIqInput(iqEl); }
@@ -1662,13 +1652,14 @@ function envoyerFormulaire() {
   btn.disabled = true; btn.textContent = 'Envoi en cours\u2026';
   var msg = '\u2550'.repeat(40)+'\nDEMANDE '+d.type.toUpperCase()+' \u2014 '+d.site+'\n'+'\u2550'.repeat(40)+'\n\n';
   d.fields.filter(function(f){ return f.v; }).forEach(function(f){ msg += f.l+' : '+f.v+'\n'; });
-  // Messages d'alerte AFFICHÉS dans la demande Kulanz : repris sous le contenu du mail, avant la signature.
+  // Si un message s'affiche dans la demande Kulanz : titre « Points d'attention » + MOTIFS seulement,
+  // sous le contenu du mail, avant la signature.
   // (uniquement à l'envoi de la demande ; rien n'est ajouté au mail de changement de statut)
   if (d.type !== 'CCR') {
-    var _alk = collectKulanzAlertes();
-    if (_alk.length) {
+    var _mot = collectKulanzMotifs();
+    if (_mot.length) {
       msg += '\n'+'\u2500'.repeat(40)+'\n\u26A0 POINTS D\'ATTENTION DE LA DEMANDE KULANZ\n';
-      _alk.forEach(function(a){ msg += '\u2022 '+a+'\n'; });
+      _mot.forEach(function(m){ msg += '\u2022 '+m+'\n'; });
     }
   }
   msg += '\n'+'\u2500'.repeat(40)+'\nTeam Garantie GEA \u2013 VW';
@@ -3059,36 +3050,21 @@ function updateEntretienBanner() {
   if (banner) banner.style.display = isEntretienCategory() ? 'block' : 'none';
 }
 
-// Récupère, en texte brut, les messages d'alerte actuellement AFFICHÉS dans le formulaire Kulanz
-// (alertes sous chaque question, alerte « Attention », motifs + règle de la marque).
-// Seuls les éléments visibles sont repris ; les doublons sont supprimés.
-function collectKulanzAlertes() {
-  var out = [], seen = {};
-  var vis   = function(el) { return !!el && el.getClientRects().length > 0; };
-  var clean = function(t)  { return String(t || '').replace(/\s+/g, ' ').trim(); };
-  var add   = function(t)  { t = clean(t); if (t && !seen[t]) { seen[t] = 1; out.push(t); } };
-
-  // 1) Alertes affichées sous chaque question (titre + texte)
-  [].forEach.call(document.querySelectorAll('.knok-item'), function(el) {
-    if (!vis(el)) return;
-    var title = el.querySelector(':scope > div > div'), body = el.querySelector(':scope > div > p');
-    add([title ? clean(title.textContent) : '', body ? clean(body.textContent) : ''].filter(Boolean).join(' — '));
-  });
-
-  // 2) Alerte « Attention » (dernier entretien vendu et réalisé en même temps que la réparation)
-  var va = ge('vendu-alert');
-  if (vis(va)) add(va.textContent);
-
-  // 3) Bloc de synthèse : motifs de non-éligibilité + règle de la marque
+// Récupère les MOTIFS affichés dans le bloc « Kulanz non applicable » du formulaire
+// (ex. « Dernier entretien manquant »). Rien d'autre : ni textes d'alerte, ni règles de la marque.
+// Retourne [] si aucun message n'est affiché.
+function collectKulanzMotifs() {
   var z = ge('kulanz-nok-alert');
-  if (z && z.classList.contains('show') && vis(z)) {
-    var motifs = [].map.call(z.querySelectorAll('.knok-body > div:not(.knok-brand) > p'), function(p) {
-      return clean(p.textContent).replace(/^[^\wÀ-ÿ]+/, '');
-    }).filter(Boolean);
-    if (motifs.length) add('Motif(s) de non-éligibilité : ' + motifs.join(' ; '));
-    var bt = z.querySelector('.knok-brand-title'), bx = z.querySelector('.knok-brand-txt');
-    if (bt && bx) add(clean(bt.textContent) + ' — ' + clean(bx.textContent));
-  }
+  if (!z || !z.classList.contains('show') || z.getClientRects().length === 0) return [];
+  var out = [], seen = {};
+  [].forEach.call(z.querySelectorAll('.knok-body > div:not(.knok-brand) > p'), function(p) {
+    var t = String(p.textContent || '').replace(/\s+/g, ' ').trim().replace(/^[^\w\u00C0-\u00FF]+/, '');
+    // « Code tuning détecté → NOK » → « Code tuning détecté » (le suffixe n'a de sens qu'à l'écran)
+    t = t.replace(/\s*(?:→|->)\s*NOK\s*$/i, '');
+    // Phrase explicative longue (ex. OPTEVEN) : on ne garde que le motif, avant les deux-points
+    if (t.length > 70 && t.indexOf(' : ') > 0) t = t.slice(0, t.indexOf(' : '));
+    if (t && !seen[t]) { seen[t] = 1; out.push(t); }
+  });
   return out;
 }
 
