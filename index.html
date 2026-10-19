@@ -182,6 +182,13 @@
       <p style="font-size:10.5px;color:var(--muted);margin:8px 0 0;text-align:center">L'e-mail s'ouvre pré-rempli : joignez vos fichiers depuis votre messagerie, puis envoyez.</p>
     </div>
 
+    <!-- BLOC CONFIRMATION PAR E-MAIL (affiché uniquement pour une demande Kulanz) -->
+    <div id="kulanz-confirm-block" style="display:none;margin:16px 0;padding:14px;background:#E4F3F4;border:1px solid #A9DCE0;border-radius:12px;text-align:center">
+      <div style="font-weight:700;font-size:13.5px;color:#0A7280;margin-bottom:4px">📧 Confirmation par e-mail</div>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px">Recevez le récapitulatif de votre demande dans votre messagerie (TeamGarantie en copie).</p>
+      <button type="button" onclick="envoyerConfirmationKulanz()" style="width:100%;padding:10px;background:#0A7280;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">📧 Envoyer l'e-mail de confirmation</button>
+    </div>
+
     <button class="btn-new" onclick="nouvelleDemande()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Nouvelle demande
@@ -769,6 +776,22 @@
 </div>
 
 <!-- ══ MODAL VIDER HISTORIQUE ══ -->
+<!-- MODALE : résumé de la demande avant envoi -->
+<div id="recap-modal">
+  <div class="vm-box">
+    <div class="vm-icon">📋</div>
+    <div class="vm-title">Résumé de la demande</div>
+    <div class="vm-sub">Vérifiez les informations, puis confirmez l'envoi.</div>
+    <div id="recap-body"></div>
+    <div id="recap-warn" class="rc-warn" style="display:none"></div>
+    <div id="recap-ccr-note" class="vm-warn" style="display:none;margin-top:10px">⚠ Après confirmation : le PDF est généré et les instructions s'affichent.</div>
+    <div class="vm-btns">
+      <button type="button" class="vm-btn-cancel" onclick="fermerRecap()">✏️ Modifier</button>
+      <button type="button" class="vm-btn-confirm" id="recap-ok-btn" onclick="confirmerEnvoi()" style="background:#0A7280">✔ Confirmer l'envoi</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODALE : débloquer un utilisateur (envoi lien de réinitialisation) -->
 <div id="debloc-modal">
   <div class="vm-box">
