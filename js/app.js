@@ -3177,6 +3177,22 @@ function checkKulanzNok() {
   var entretienNames = ['preconisations','dernier_entretien','dernier_entretien_audi','entretien_moment','lien_entretien'];
   var catEntretien = isEntretienCategory();
 
+  // Critères d'entretien NON bloquants (catégorie de pièce non concernée) : on l'explique sous la réponse,
+  // sinon l'étiquette « → NOK » laisse croire qu'un message manque. (Ces notes ne sont jamais reprises dans les mails.)
+  if (!catEntretien) {
+    var _catNom = ge('dom-cat') ? (ge('dom-cat').value || '') : '';
+    questions.forEach(function(q) {
+      if (!q.nok || entretienNames.indexOf(q.name) === -1 || gr(q.name) !== q.nok) return;
+      var el = ge('knok-item-' + q.name);
+      if (!el) return;
+      el.innerHTML = '<div style="background:#F1F5F9;border:1px solid #D5DEE8;border-radius:8px;padding:8px 12px;font-size:12px;color:#475569">'
+        + '\u2139\uFE0F Crit\u00e8re d\'entretien <strong>non bloquant</strong> pour cette cat\u00e9gorie de pi\u00e8ce '
+        + '(bloquant uniquement pour \u00ab Ensemble motopropulseur \u00bb et \u00ab Transmission \u00bb). '
+        + 'Cat\u00e9gorie actuelle : <strong>' + esc(_catNom || 'aucune \u2014 choisissez d\'abord la pi\u00e8ce') + '</strong>.</div>';
+      el.style.display = 'block';
+    });
+  }
+
   // Collecter les réponses et détecter les NOK
   var reasons = [];
   questions.forEach(function(q) {
